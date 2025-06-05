@@ -45,7 +45,13 @@ def is_eye_open(alpha_ratios, threshold=0.5, vote_method='majority'):
 def connect_eeg_stream(expected_channels=14):
     print("🔍 Đang tìm EEG stream...")
     streams = resolve_stream('type', 'EEG')
-    inlet = StreamInlet(streams[0])
+    correct_stream = None
+    for i, stream in enumerate(streams):
+        print(stream.name())
+        if stream.name() == "Cygnus-081015-RawEEG":
+            correct_stream = stream
+    print(correct_stream.name())
+    inlet = StreamInlet(correct_stream)
     info = inlet.info()
     fs = int(info.nominal_srate())
     print(f"✅ Đã kết nối EEG @ {fs} Hz với {info.channel_count()} kênh")
