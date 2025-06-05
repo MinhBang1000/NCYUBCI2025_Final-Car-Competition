@@ -4,7 +4,8 @@ from utils import (
     apply_bandpass,
     analyze_alpha_ratios,
     ensemble_open_eye_detection,
-    control_car
+    control_car,
+    ensemble_vote_4ch
 )
 import time
 from serial import Serial
@@ -20,8 +21,8 @@ inlet, fs = connect_eeg_stream(expected_channels=N_CHANNELS)
 def run_trial():
     raw_data = collect_eeg_data(inlet, fs, DURATION, N_CHANNELS)
     filtered_data = apply_bandpass(raw_data, fs)
-    alpha_ratios = analyze_alpha_ratios(filtered_data, fs)
-    state = ensemble_open_eye_detection(alpha_ratios)
+    alpha_ratios = analyze_alpha_ratios(filtered_data, fs, channel_indices=[0, 1, 4, 5])
+    state = ensemble_vote_4ch(alpha_ratios, 0.5)
     return 0 if state == "closed" else 1
 
 # ==== MAIN LOOP ====
@@ -49,7 +50,8 @@ try:
 
         # Create the serial then send the control to the car here
 
-        print("Waiting for the next command, please wait 2s...")
+        print("Waiting for the next command, please wait 2s (Finish Cycle)...")
+        winsound.Beep(400, 700)
         time.sleep(2)
 
 except KeyboardInterrupt:

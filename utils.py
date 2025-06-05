@@ -75,13 +75,22 @@ def apply_bandpass(data, fs):
         filtered[i] = bandpass_filter(data[i], fs)
     return filtered
 
-def analyze_alpha_ratios(filtered_data, fs):
-    print("\n🔎 Alpha wave assessment per channel:")
+# def analyze_alpha_ratios(filtered_data, fs):
+#     print("\n🔎 Alpha wave assessment per channel:")
+#     alpha_ratios = []
+#     for i in range(filtered_data.shape[0]):
+#         result = compute_alpha_ratio(filtered_data[i], fs)
+#         alpha_ratios.append(result["alpha_ratio"])
+#         print(f"Channel {i+1:>2}: alpha_ratio = {result['alpha_ratio']:.3f} → {result['conclusion']}")
+#     return alpha_ratios
+
+def analyze_alpha_ratios(filtered_data, fs, channel_indices=[0, 1, 4, 5]):
+    print("\n🔎 Alpha wave assessment for selected channels:")
     alpha_ratios = []
-    for i in range(filtered_data.shape[0]):
+    for i, ch in enumerate(channel_indices):
         result = compute_alpha_ratio(filtered_data[i], fs)
         alpha_ratios.append(result["alpha_ratio"])
-        print(f"Channel {i+1:>2}: alpha_ratio = {result['alpha_ratio']:.3f} → {result['conclusion']}")
+        print(f"Channel {ch+1:>2}: alpha_ratio = {result['alpha_ratio']:.3f} → {result['conclusion']}")
     return alpha_ratios
 
 def ensemble_open_eye_detection(alpha_ratios, top_k=5, threshold=0.5):
@@ -99,19 +108,31 @@ def ensemble_open_eye_detection(alpha_ratios, top_k=5, threshold=0.5):
         print("\n🧠 Final Decision: You are likely **EYES CLOSED** (strong alpha)")
         return "closed"
 
+def ensemble_vote_4ch(alpha_ratios, threshold=0.5):
+    print("\n📊 Alpha ratios used for voting:", [f"{a:.3f}" for a in alpha_ratios])
+    votes = [1 if r < threshold else 0 for r in alpha_ratios]  # 1 = eyes open
+    print(f"🗳️ Binary votes (1=open, 0=closed): {votes} → Total 'open' votes = {sum(votes)}")
+
+    if sum(votes) >= 1:
+        print("\n🧠 Final Decision: You are likely **EYES OPEN** (weak alpha)")
+        return "open"
+    else:
+        print("\n🧠 Final Decision: You are likely **EYES CLOSED** (strong alpha)")
+        return "closed"
+
 # Define control function
 def control_car(control_code, ser):
     mapping = {
-        '00': b'0',  # Stop
+        '00': b'1',  # Long run
         '01': b'3',  # Left
         '10': b'4',  # Right
         '11': b'1'   # Forward
     }
 
     degree = {
-        '00': 0.5,
-        '01': (0.2 * 90) / 32.5,
-        '10': (0.2 * 90) / 35,
+        '00': 1.3,
+        '01': 0.1,
+        '10': 0.1,
         '11': 0.5
     }
 
