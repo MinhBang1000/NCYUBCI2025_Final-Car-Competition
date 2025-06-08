@@ -18,39 +18,36 @@ members = {
     '313551132': '何承遠'
 }
 
-# Original flat-friendly color palette (for max 5 members)
+# Flat-friendly color palette
 base_colors = ['#f28e8e', '#8ecae6', '#a3d9a5', '#fcd5b4', '#cdb4db']
 
-# Task contributions
+# Updated contributions
 tasks = {
     "LSL Real-Time Data Streaming": [75, 5, 10, 5, 5],
     "Alpha Wave Preprocessing (Bandpass + Filter)": [10, 75, 5, 5, 5],
     "Alpha Ratio & Ensemble Strategy": [5, 5, 75, 10, 5],
     "EEG Control Practice": [25, 15, 35, 15, 10],
-    "Report writing": [20, 20, 40, 20, 0]
+    "Report writing": [20, 20, 30, 20, 5]
 }
 
-# Create an 'images' folder if it doesn't exist
+# Create output folder
 if not os.path.exists('images'):
     os.makedirs('images')
 
-# Plot each pie chart WITHOUT individual legends
+# Plot each pie chart with bigger text and save with dpi=300
 for task, contributions in tasks.items():
-    # Filter out members with 0% contribution
     filtered_data = [
         (f"{id} ({members[id]})", contrib, color)
         for (id, contrib, color) in zip(members.keys(), contributions, base_colors)
         if contrib > 0
     ]
-    
-    # Unpack filtered data
+
     labels = [label for label, _, _ in filtered_data]
     values = [value for _, value, _ in filtered_data]
     colors = [color for _, _, color in filtered_data]
 
-    # Plot pie chart
-    plt.figure(figsize=(6, 6))
-    plt.pie(
+    fig, ax = plt.subplots(figsize=(6, 6))
+    wedges, texts, autotexts = ax.pie(
         values,
         labels=None,
         colors=colors,
@@ -59,16 +56,23 @@ for task, contributions in tasks.items():
         shadow=False,
         wedgeprops={'edgecolor': 'black', 'linewidth': 1}
     )
-    plt.title(task, fontsize=13, fontweight='bold')
-    plt.axis('equal')
+
+    # Set font size of percentage texts
+    for autotext in autotexts:
+        autotext.set_fontsize(14)
+        autotext.set_fontweight('bold')
+        autotext.set_color('black')
+
+    ax.set_title(task, fontsize=18, fontweight='bold')
+    ax.axis('equal')
     plt.tight_layout()
 
-    # Save the plot
+    # Save the plot with dpi=300
     image_filename = f"images/{task.replace(' ', '_').replace('(', '').replace(')', '')}.png"
-    plt.savefig(image_filename)
-    plt.show()
+    plt.savefig(image_filename, dpi=300)
+    plt.close()  # Close the plot to avoid displaying
 
-# Create a separate figure for the unified legend only
+# Unified legend chart with larger fonts
 fig = plt.figure(figsize=(5, 2))
 legend_labels = [f"{id} ({name})" for id, name in members.items()]
 handles = [plt.Rectangle((0, 0), 1, 1, color=color, edgecolor='black') for color in base_colors]
@@ -78,13 +82,13 @@ fig.legend(
     legend_labels,
     title="Team Members",
     loc='center',
-    fontsize=10,
-    title_fontsize=12
+    fontsize=14,
+    title_fontsize=16
 )
 plt.axis('off')
 plt.tight_layout()
 
-# Save the legend image
+# Save the legend image with dpi=300
 legend_filename = "images/team_members_legend.png"
-plt.savefig(legend_filename)
-plt.show()
+plt.savefig(legend_filename, dpi=300)
+plt.close()  # Close the legend plot to avoid displaying
