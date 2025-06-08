@@ -2,27 +2,23 @@ from scipy.signal import welch
 import numpy as np
 from scipy.signal import butter, filtfilt
 from pylsl import StreamInlet, resolve_stream
+import time
 
 def compute_alpha_ratio(signal, fs, alpha_range=(8, 13), total_range=(3, 30)):
-    # Tính phổ bằng Welch
     freqs, psd = welch(signal, fs=fs, nperseg=fs)
 
-    # Tạo mask cho từng dải tần
     alpha_mask = (freqs >= alpha_range[0]) & (freqs <= alpha_range[1])
     total_mask = (freqs >= total_range[0]) & (freqs <= total_range[1])
 
-    # Tính tổng năng lượng
     alpha_power = np.sum(psd[alpha_mask])
     total_power = np.sum(psd[total_mask])
 
-    # Tính tỉ lệ alpha
     alpha_ratio = alpha_power / total_power if total_power > 0 else 0
 
-    # Kết luận
     if alpha_ratio > 0.3:
-        conclusion = "✅ Có sóng alpha mạnh (có thể nhắm mắt hoặc thư giãn)"
+        conclusion = "✅ Strong alpha waves detected (possibly eyes closed or relaxed)"
     else:
-        conclusion = "❌ Alpha yếu (có thể mở mắt hoặc đang chú ý)"
+        conclusion = "❌ Weak alpha (possibly eyes open or focused)"
 
     return {
         "alpha_power": alpha_power,
@@ -38,37 +34,40 @@ def is_eye_open(alpha_ratios, threshold=0.5, vote_method='majority'):
     elif vote_method == 'majority':
         return sum(binary_votes) >= (len(alpha_ratios) // 2 + 1)
     elif vote_method == 'weighted':
-        weights = [0.134, 0.073, 0.033, 0.0001, 0.0001]  # Δalpha từ top-5
+        weights = [0.134, 0.073, 0.033, 0.0001, 0.0001]  # Δalpha from top-5
         score = sum(w if r < threshold else 0 for r, w in zip(alpha_ratios, weights))
-        return score > 0.1  # tùy bạn chỉnh ngưỡng
+        return score > 0.1
 
 def connect_eeg_stream(expected_channels=14):
-    print("🔍 Đang tìm EEG stream...")
+    print("🔍 Searching for EEG stream...")
     streams = resolve_stream('type', 'EEG')
-    inlet = StreamInlet(streams[0])
+    correct_stream = None
+    for i, stream in enumerate(streams):
+        print(stream.name())
+        if stream.name() == "Cygnus-081015-RawEEG":
+            correct_stream = stream
+    print(correct_stream.name())
+    inlet = StreamInlet(correct_stream)
     info = inlet.info()
     fs = int(info.nominal_srate())
-    print(f"✅ Đã kết nối EEG @ {fs} Hz với {info.channel_count()} kênh")
+    print(f"✅ Connected to EEG @ {fs} Hz with {info.channel_count()} channels")
     if info.channel_count() < expected_channels:
-        raise ValueError("❌ Thiết bị không đủ kênh yêu cầu!")
+        raise ValueError("❌ Device does not provide enough required channels!")
     return inlet, fs
 
-
 def collect_eeg_data(inlet, fs, duration, n_channels):
-    print(f"⏳ Đang thu {duration} giây dữ liệu EEG...")
+    print(f"⏳ Collecting {duration} seconds of EEG data...")
     samples = []
     for _ in range(fs * duration):
         sample, _ = inlet.pull_sample()
         samples.append(sample[:n_channels])
     raw = np.array(samples).T
-    print("✅ Thu xong dữ liệu!")
+    print("✅ Data collection complete!")
     return raw
-
 
 def bandpass_filter(data, fs, lowcut=8, highcut=30, order=4):
     b, a = butter(order, [lowcut / (0.5 * fs), highcut / (0.5 * fs)], btype='band')
     return filtfilt(b, a, data)
-
 
 def apply_bandpass(data, fs):
     filtered = np.zeros_like(data)
@@ -76,28 +75,71 @@ def apply_bandpass(data, fs):
         filtered[i] = bandpass_filter(data[i], fs)
     return filtered
 
+# def analyze_alpha_ratios(filtered_data, fs):
+#     print("\n🔎 Alpha wave assessment per channel:")
+#     alpha_ratios = []
+#     for i in range(filtered_data.shape[0]):
+#         result = compute_alpha_ratio(filtered_data[i], fs)
+#         alpha_ratios.append(result["alpha_ratio"])
+#         print(f"Channel {i+1:>2}: alpha_ratio = {result['alpha_ratio']:.3f} → {result['conclusion']}")
+#     return alpha_ratios
 
-def analyze_alpha_ratios(filtered_data, fs):
-    print("\n🔎 Đánh giá sóng Alpha từng kênh:")
+def analyze_alpha_ratios(filtered_data, fs, channel_indices=[0, 1, 4, 5]):
+    print("\n🔎 Alpha wave assessment for selected channels:")
     alpha_ratios = []
-    for i in range(filtered_data.shape[0]):
+    for i, ch in enumerate(channel_indices):
         result = compute_alpha_ratio(filtered_data[i], fs)
         alpha_ratios.append(result["alpha_ratio"])
-        print(f"Kênh {i+1:>2}: alpha_ratio = {result['alpha_ratio']:.3f} → {result['conclusion']}")
+        print(f"Channel {ch+1:>2}: alpha_ratio = {result['alpha_ratio']:.3f} → {result['conclusion']}")
     return alpha_ratios
-
 
 def ensemble_open_eye_detection(alpha_ratios, top_k=5, threshold=0.5):
     top_indices = np.argsort(alpha_ratios)[:top_k]
     top_alpha = [alpha_ratios[i] for i in top_indices]
     votes = [1 if val < threshold else 0 for val in top_alpha]
 
-    print(f"\n📊 Top {top_k} alpha_ratio (thấp nhất): {[f'{a:.3f}' for a in top_alpha]}")
-    print(f"🗳️ Voting result: {votes} → Tổng phiếu mở mắt = {sum(votes)}")
+    print(f"\n📊 Top {top_k} alpha_ratios (lowest): {[f'{a:.3f}' for a in top_alpha]}")
+    print(f"🗳️ Voting result: {votes} → Total open-eye votes = {sum(votes)}")
 
     if sum(votes) >= (top_k // 2 + 1):
-        print("\n🧠 Kết luận cuối cùng: Bạn có thể đang **MỞ MẮT** (alpha yếu)")
+        print("\n🧠 Final Decision: You are likely **EYES OPEN** (weak alpha)")
         return "open"
     else:
-        print("\n🧠 Kết luận cuối cùng: Bạn có thể đang **NHẮM MẮT** (alpha mạnh)")
+        print("\n🧠 Final Decision: You are likely **EYES CLOSED** (strong alpha)")
         return "closed"
+
+def ensemble_vote_4ch(alpha_ratios, threshold=0.5):
+    print("\n📊 Alpha ratios used for voting:", [f"{a:.3f}" for a in alpha_ratios])
+    votes = [1 if r < threshold else 0 for r in alpha_ratios]  # 1 = eyes open
+    print(f"🗳️ Binary votes (1=open, 0=closed): {votes} → Total 'open' votes = {sum(votes)}")
+
+    if sum(votes) >= 1:
+        print("\n🧠 Final Decision: You are likely **EYES OPEN** (weak alpha)")
+        return "open"
+    else:
+        print("\n🧠 Final Decision: You are likely **EYES CLOSED** (strong alpha)")
+        return "closed"
+
+# Define control function
+def control_car(control_code, ser):
+    mapping = {
+        '00': b'1',  # Long run
+        '01': b'3',  # Left
+        '10': b'4',  # Right
+        '11': b'1'   # Forward
+    }
+
+    degree = {
+        '00': 1.3,
+        '01': 0.1,
+        '10': 0.1,
+        '11': 0.5
+    }
+
+    command = mapping.get(control_code, b'0')  # Default to stop if unknown
+    ser.write(command)
+    time.sleep(degree.get(control_code,0.5))
+    ser.write(b'0')
+    print(f"🚗 Sent to car: {command.decode()} for code {control_code}")
+
+
